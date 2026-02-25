@@ -1,0 +1,189 @@
+---
+title: "Assignment2"
+author: "Hooman Fareghi"
+date: "2026-02-12"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r} 
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#preparing data
+library(caret)
+set.seed(123)
+#remove space from names
+Bank <- read.csv("UniversalBank-1.csv", check.names = TRUE)
+names(Bank) <- make.names(names(Bank))
+#targeting personal loans
+Bank$Personal.Loan <- factor(Bank$Personal.Loan,levels = c(0,1),labels = c("0","1"))
+#excluding ID and zip code(Perform a k-NN classification with all predictors except ID and ZIP code)
+Bank2 <- Bank[,-c(1,5)]
+#transform categorical predictors with more than two categories into dummy variables first.
+Bank2$Family <- factor(Bank2$Family)
+Bank2$Education <- factor(Bank2$Education,levels = c(1,2,3))
+Bank3 <- as.data.frame(model.matrix(~.-Personal.Loan,data=Bank2))
+Value <- Bank2$Personal.Loan
+#Partition the data into training (60%) and validation (40%) sets
+partition <- createDataPartition(Value,p=0.6,list = FALSE)
+x_train <- Bank3[partition,]
+x_test <- Bank3[-partition,]
+y_train <- Value[partition]
+y_test <- Value[-partition]
+#Perform a k-NN classification with all predictors
+pp <- preProcess(x_train,method = c("center","scale"))
+x_train2 <- predict(pp,x_train)
+x_test2 <- predict(pp,x_test)
+#check
+dim(x_train2);dim(x_test2)
+table(y_train);table(y_test)
+
+```
+
+#1. Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 =  1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1, and Credit Card = 1. Perform a k-NN classification with all predictors except ID and ZIP code using k = 1. Remember to transform categorical predictors with more than two categories into dummy variables first. Specify the success class as 1 (loan acceptance), and use the default cutoff value of 0.5. How would this customer be classified? 
+```{r}
+knn <- knn3(x=x_train2,y=y_train,k=1)
+customer1 <- data.frame(Age=40, Experience=10,Income=84,Family=factor("2",levels = levels(Bank2$Family)),CCAvg=2, Education=factor("1",levels = levels(Bank2$Education)),Mortgage=0, Securities.Account=0,CD.Account=0,Online=1,Credit.Card=1,Personal.Loan=factor("0",levels = c("0","1")))
+customer1
+
+```
+
+```{r}
+customer1_x <- as.data.frame(model.matrix(~.-Personal.Loan,data = customer1))
+missing_cols <- setdiff(colnames(x_train), colnames(customer1_x))
+for(m in missing_cols) customer1_x[[m]] <- 0
+
+customer1_x <- customer1_x[, colnames(x_train), drop = FALSE]
+
+
+customer1_x2 <- predict(pp,customer1_x)
+p1 <- predict(knn , customer1_x2, type = "prob")[, "1"]
+predict1 <- ifelse(p1>=0.5,"1","0")
+p1
+predict1
+```
+#k=1 and a cutoff of 0.5, the predicted probability that Customer1 accepts the loan is 0. so the model shows that the customer1 as not accepting the loan.
+
+#2. What is a choice of k that balances between overfiting and ignoring the predictor information?
+
+```{r}
+k_grid <- seq(1, 101, by = 2)
+acc <- numeric(length(k_grid))
+for(i in seq_along(k_grid)){k <- k_grid[i] 
+fit <- knn3(x = x_train2, y = y_train, k = k)
+p <- predict(fit, x_test2, type = "prob")[, "1"] 
+pred <- factor(ifelse(p >= 0.5, "1", "0"), levels = c("0","1"))
+acc[i] <- mean(pred == y_test)}
+tuning <- data.frame(k = k_grid, validation_accuracy = acc)
+tuning
+```
+```{r}
+best_k <- tuning$k[which.max(tuning$validation_accuracy)]
+best_k
+```
+```{r}
+max(tuning$validation_accuracy)
+```
+#I tested different values of k from 1 to 101. The highest validation accuracy (0.964) was achieved at k = 1. Although small k values can overfit, k = 1 gave the best validation result in this dataset. Therefore, k = 1 was selected.
+
+#3. Show the confusion matrix for the valida on data that results from using the best k. 
+```{r}
+knn_best <- knn3(x = x_train2, y = y_train, k = best_k)
+p_valid <- predict(knn_best, x_test2, type = "prob")[, "1"]
+pred_valid <- factor(ifelse(p_valid >= 0.5, "1", "0"), levels = c("0","1"))
+
+confusionMatrix(pred_valid, y_test, positive = "1")
+```
+#The model has 96.4% accuracy. It predicts non-loan customers very well (99%) and correctly identifies about 70% of loan customers. It performs better for the majority class (no loan).
+
+#4. Consider the following customer: Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1 and Credit Card = 1. Classify the customer using the best k.  
+
+```{r}
+customer2 <- data.frame(Age = 40, Experience = 10, Income = 84,
+  Family = factor("2", levels = levels(Bank2$Family)),CCAvg = 2,Education = factor("3", levels = levels(Bank2$Education)),Mortgage = 0, Securities.Account = 0, CD.Account = 0,
+  Online = 1, CreditCard = 1,Personal.Loan = factor("0", levels = c("0","1")))
+customer2
+```
+```{r}
+customer2_X <- as.data.frame(model.matrix(~ . - Personal.Loan, data = customer2))
+
+missing_cols <- setdiff(colnames(x_train), colnames(customer2_X))
+for(m in missing_cols) customer2_X[[m]] <- 0
+customer2_X <- customer2_X[, colnames(x_train), drop = FALSE]
+
+customer2s <- predict(pp, customer2_X)
+
+p2 <- predict(knn_best, customer2s, type = "prob")[, "1"]
+pred2 <- ifelse(p2 >= 0.5, "1", "0")
+
+p2
+pred2
+```
+
+
+```{r}
+acc[i] <- mean(pred2 == y_test)
+
+tuning2 <- data.frame(k = k_grid, validation_accuracy = acc)
+tuning
+
+best_k2 <- tuning2$k[which.max(tuning$validation_accuracy)]
+best_k2
+max(tuning2$validation_accuracy)
+```
+#Changing Education did not change the prediction because with k = 1 the model depends on only one nearest neighbor.
+
+#5. Repartiton the data, this me into training, validation, and test sets (50% : 30% : 20%). Apply the k-NN method with the k chosen above. Compare the confusion matrix of the test set with that of the training and validation sets. Comment on the differences and their reason.
+
+```{r}
+library(caret)
+set.seed(456)
+
+#spieliting data to %
+partition2 <- createDataPartition(Value, p = 0.50, list = FALSE)
+X_train2 <- Bank3[partition2, ]
+y_train2 <- Value[partition2]
+
+# remaining 50%
+X_temp <- Bank3[-partition2, ]
+y_temp <- Value[-partition2]
+
+# split remaining 30% to validation and 20% to test
+idx_valid2 <- createDataPartition(y_temp, p = 0.60, list = FALSE)
+X_valid2 <- X_temp[idx_valid2, ]
+y_valid2 <- y_temp[idx_valid2]
+X_test2  <- X_temp[-idx_valid2, ]
+y_test2  <- y_temp[-idx_valid2]
+
+# standardize variables 
+pp2 <- preProcess(X_train2, method = c("center","scale"))
+X_train2_s <- predict(pp2, X_train2)
+X_valid2_s <- predict(pp2, X_valid2)
+X_test2_s  <- predict(pp2, X_test2)
+
+# kNN using the SAME best_k from  q3
+knn_final <- knn3(x = X_train2_s, y = y_train2, k = best_k)
+
+# Training confusion matrix
+p_tr <- predict(knn_final, X_train2_s, type = "prob")[, "1"]
+pred_tr <- factor(ifelse(p_tr >= 0.5, "1", "0"), levels = c("0","1"))
+cm_train <- confusionMatrix(pred_tr, y_train2, positive = "1")
+cm_train
+
+# Validation confusion matrix
+p_va <- predict(knn_final, X_valid2_s, type = "prob")[, "1"]
+pred_va <- factor(ifelse(p_va >= 0.5, "1", "0"), levels = c("0","1"))
+cm_valid <- confusionMatrix(pred_va, y_valid2, positive = "1")
+cm_valid
+
+# Test confusion matrix
+p_te <- predict(knn_final, X_test2_s, type = "prob")[, "1"]
+pred_te <- factor(ifelse(p_te >= 0.5, "1", "0"), levels = c("0","1"))
+cm_test <- confusionMatrix(pred_te, y_test2, positive = "1")
+cm_test
+```
+
+#Using the 50/30/20 split, the training accuracy is 100% because k = 1 perfectly fits the training data. The validation accuracy is 95.7% and the test accuracy is 95.8%, which are very similar. This shows that the model performs consistently on new data. The model predicts non-loan customers very well, but sensitivity for loan customers is lower.
