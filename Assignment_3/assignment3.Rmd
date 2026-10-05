@@ -1,0 +1,91 @@
+---
+title: "Assignment3"
+author: "Hooman Fareghi"
+date: "2026-03-01"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#preparing data
+```{r}
+library(caret)
+set.seed(123)
+mydata <- read.csv("UniversalBank-1.csv") 
+bank <- mydata[,c("Online","CreditCard","Personal.Loan")]
+colnames(bank) <- c("Online","CC","PL")
+```
+#make a partition into training (60%)
+```{r}
+index_train <- createDataPartition(bank$PL,p=0.6, list= FALSE)
+train <- bank[index_train,]
+valid <- bank[-index_train,]
+```
+
+#Part A
+```{r}
+pivot <- table(cc=train$CC, pl=train$PL, online=train$Online)
+```
+#part B
+
+```{r}
+prob.b <- pivot["1","1","1"]/(pivot["1","1","1"]+pivot["1","0","1"])
+prob.b
+```
+#part c
+```{r}
+pivot1 <- table(pl=train$PL, online=train$Online)
+pivot2 <- table(pl=train$PL, cc=train$CC)
+```
+#part D
+
+```{r}
+#i
+prob_cc <- pivot2["1","1"]/sum(pivot2["1",])
+#ii
+prob_online <- pivot1["1","1"]/sum(pivot1["1",])
+#iii
+prob_pl <- sum(train$PL==1)/nrow(train)
+#iv
+prob_cc_pl0 <- pivot2["0","1"]/sum(pivot2["0",])
+#v
+prob_online_0 <- pivot1["0","1"]/sum(pivot1["0",])
+#vi
+prob_pl0 <- sum(train$PL==0)/nrow(train)
+
+```
+
+
+#part E
+```{r}
+prob_E <- prob_cc*prob_online*prob_pl/((prob_cc*prob_online*prob_pl)+(prob_cc_pl0*prob_online_0*prob_pl0))
+prob_E
+```
+
+#part F
+```{r}
+comparison <- data.frame(method=c("pivot table","Naive Bayes"),
+                         probability=c(prob.b,prob_E))
+comparison
+```
+
+#The pivot table probability(0.1071) and the Naive Bayes probability(0.1106) are very close. The small difference happens because Naive Bayes assumes CC and Online are independent given PL.The pivot table value is the more accurate estimate since it uses the actual counts.
+
+#part G
+
+```{r}
+library(e1071)
+train$PL <- as.factor(train$PL)
+train$Online <- as.factor(train$Online)
+train$CC <- as.factor(train$CC)
+nb <- naiveBayes(PL ~ CC + Online, data = train)
+customer <- data.frame(CC=factor(1,levels = levels(train$CC)),Online=factor(1,levels = levels(train$Online)))
+prediction <- predict(nb,customer,type = "raw")
+prob.loan1 <- prediction[,"1"]
+prob.loan1
+```
+#I trained a Naive Bayes model using CC and Online to predict PL. For a customer with CC = 1 and Online = 1, the predicted probability of accepting the loan was 0.1106, which matches the manual Naive Bayes calculation from Part E.

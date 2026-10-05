@@ -1,0 +1,75 @@
+---
+title: "Assignment4"
+author: "Hooman Fareghi"
+date: "2026-03-26"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#load and choose numerical variables and standardize them
+```{r}
+library(dplyr)
+library(ggplot2)
+library(cluster)
+pharma <- read.csv("Pharmaceuticals-1.csv")
+numV <- pharma %>%select(Market_Cap, Beta, PE_Ratio, ROE, ROA,Asset_Turnover, Leverage, Rev_Growth, Net_Profit_Margin)
+numVS <- numV %>%scale()
+```
+
+
+#(A)use elbow method
+```{r}
+wss <- 1:10 %>%sapply(function(k) {kmeans(numVS, centers = k, nstart = 25)$tot.withinss})
+data.frame(k = 1:10, wss = wss) %>%ggplot(aes(x = k, y = wss)) +geom_line() +geom_point() +
+labs(title = "Elbow Method",x = "Number of Clusters",y = "Within-Cluster Sum of Squares")
+```
+
+
+#use silhouette method
+```{r}
+avg_sil <- 2:10 %>%sapply(function(k) {km <- numVS %>%kmeans(centers = k, nstart = 25)
+    silhouette(km$cluster, dist(numVS))[, 3] %>% mean()})
+data.frame(k = 2:10, silhouette = avg_sil) %>%ggplot(aes(x = k, y = silhouette)) +geom_line() +
+  geom_point() +labs(title = "Silhouette Method",x = "Number of Clusters",y = "Average Silhouette Width")
+```
+
+#use k=3 and add cluster to data and show which firm is in which cluster
+```{r}
+set.seed(123)
+km_final <- numVS %>%kmeans(centers = 3, nstart = 25)
+pharma <- pharma %>%mutate(Cluster = as.factor(km_final$cluster))
+pharma %>%select(Symbol, Name, Cluster)
+```
+
+#(B)Interpret the clusters using the numerical variables
+
+```{r}
+cluster2 <- pharma %>%group_by(Cluster) %>%summarise(across(c(Market_Cap, Beta, PE_Ratio, ROE, ROA,
+  Asset_Turnover, Leverage, Rev_Growth, Net_Profit_Margin),mean, na.rm = TRUE))
+cluster2
+```
+
+
+#(C) Check pattern for variables not used in clustering
+
+```{r}
+pharma %>%count(Cluster, Median_Recommendation)
+pharma %>%count(Cluster, Location)
+pharma %>%count(Cluster, Exchange)
+```
+#(D) Provide an appropriate name for each cluster using any or all of the variables in the dataset.
+```{r}
+clusterN <- cluster2 %>%mutate(ClusterN= case_when(Market_Cap == max(Market_Cap) ~ "Large Firms",Rev_Growth == max(Rev_Growth) ~ "Growth Firms",TRUE ~ "Other Firms"))
+pharma <- pharma %>%left_join(clusterN%>% select(Cluster, ClusterN), by = "Cluster")
+clusterN %>%select(Cluster, ClusterN)
+```
+
+
+
+

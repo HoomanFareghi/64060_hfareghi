@@ -1,0 +1,159 @@
+---
+title: 'Final project: Salary Prediction for HR Decision Support'
+author: "Hooman Fareghi"
+date: "2026-04-12"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+# 1. Problem and Dataset
+
+This project uses a real-world salary dataset from Kaggle. The business problem is to predict employee salary based on profile information such as experience, education, job title, company size, and location. This supports HR salary planning and compensation decisions.
+
+```{r}
+library(caret)     
+library(rpart)    
+library(dplyr)     
+library(ggplot2)
+salary_data <- read.csv("job_salary_prediction_dataset.csv")
+df <- salary_data %>%select(salary, experience_years, education_level, job_title, company_size, location)
+dim(df)
+head(df)
+```
+The dataset contains real job/salary records from Kaggle, so it satisfies the requirement of using real world data.
+
+# 2. Data Preparation
+
+The dataset was prepared for modeling by selecting relevant variables including salary, experience, education, job title, company size, and location.
+
+The data was then split into training and test sets so that the models could be evaluated on unseen data.
+
+For the KNN model, additional preprocessing steps were required. Categorical variables were converted into numerical dummy variables, and the data was normalized to ensure that all variables were on a similar scale.
+
+Due to the large size of the dataset, a subset of 20,000 observations was used for the KNN model to reduce computational cost.
+
+```{r}
+set.seed(123)
+df2 <- df %>%pull(salary) %>%createDataPartition(p = 0.8, list = FALSE)%>% as.vector()
+train <- df %>% slice(df2)
+test  <- df %>% slice(-df2)
+```
+
+
+## Regression Model
+```{r}
+reg <- train %>%lm(salary ~ ., data = .)
+regPred <- test %>%predict(reg, newdata = .)
+```
+
+
+## KNN Model
+
+```{r}
+trainSmall <- train[1:20000, ]
+dummy_model <- trainSmall %>%select(-salary) %>%dummyVars(~ ., data = .) 
+trainx <- trainSmall %>%select(-salary) %>%predict(dummy_model, newdata = .) %>%as.data.frame()
+testx <- test %>%select(-salary) %>%predict(dummy_model, newdata = .) %>%as.data.frame() 
+#normalize
+pp <- trainx %>%preProcess(method = c("center", "scale"))
+trainx <- trainx %>%predict(pp, newdata = .) %>%as.data.frame()
+testx <- testx %>%predict(pp, newdata = .) %>%as.data.frame()
+#fit
+knn_model <- train(x = trainx,y=trainSmall$salary,method = "knn",tuneGrid = data.frame(k = 5)) 
+#prediction
+knn_pred <- predict(knn_model, newdata = testx)
+```
+
+## Decision Tree Model
+```{r}
+treeM <- train %>%rpart(salary ~ ., data = ., method = "anova")
+treePre <- test %>%predict(treeM, newdata = .) 
+```
+
+
+# 3. Model Comparison
+```{r}
+data.frame(Model = c("Regression", "Decision Tree", "KNN"),RMSE = c(
+    RMSE(regPred, test$salary),
+    RMSE(treePre, test$salary),
+    RMSE(knn_pred, test$salary)),
+  MAE = c(
+    MAE(regPred, test$salary),
+    MAE(treePre, test$salary),
+    MAE(knn_pred, test$salary)))
+```
+The regression model achieved the lowest RMSE and MAE, which means it provided the most accurate salary predictions among the models tested.
+
+The KNN model showed higher error. This is likely because it depends on measuring distances between observations. After converting categorical variables into many dummy variables, the data becomes high-dimensional, which reduces the effectiveness of distance-based methods for predicting salary.
+
+The decision tree model had the highest error. One reason is that salary tends to increase gradually with experience, while decision trees split the data into step-like segments. Because of this, the model cannot capture the smooth pattern of salary growth as well as regression.
+
+Overall, these results suggest that regression is better suited for this problem, as it can represent the continuous relationship between salary and key variables more effectively.
+
+This comparison also highlights that not all machine learning models perform equally well for every problem. In this case, regression stands out not only for its accuracy but also because it provides clear and useful insights for salary-related decision making.
+
+# 4. Salary Insights
+
+Salary VS Experience
+```{r}
+df %>%ggplot(aes(x = experience_years, y = salary)) +geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", se = FALSE) +labs(title = "Salary vs Experience",x = "Experience Years",
+y = "Salary")
+```
+
+Salary VS Education
+```{r}
+df %>% ggplot(aes(x = education_level, y = salary)) +
+  geom_boxplot() +labs(title = "Salary by Education Level", x = "Education Level",y = "Salary")
+```
+
+
+
+Variable Importance
+```{r}
+treeM$variable.importance %>%sort(decreasing = TRUE)
+```
+
+Importance Plot
+```{r}
+treeM$variable.importance %>%sort(decreasing = TRUE) %>%barplot(las = 2, main = "Variable Importance")
+```
+The variable importance results show that location appears as one of the most influential factors in the decision tree model. This suggests that salary varies significantly across different geographic regions.
+
+However, this result should be interpreted with caution. The location variable contains many categories, which can increase its importance in tree-based models. In contrast, variables such as experience and education show a clear and consistent relationship with salary, as seen in the regression model.
+
+This further supports the use of regression, which captures the continuous effect of experience and education on salary more effectively.
+
+
+# 5. Regression Interpretation
+
+
+```{r}
+data.frame(Variable = names(coef(reg)),Coefficient = coef(reg)) %>%
+  filter(grepl("(Intercept)|experience_years|education_level|company_size", Variable))
+```
+The regression model shows that salary increases by about $2,695 for each additional year of experience. Compared with a bachelor's degree, a master's degree is associated with about $10,822 higher salary, and a PhD is associated with about $21,556 higher salary. Diploma and high school education levels are associated with lower salaries compared with a bachelor's degree.
+
+This interpretation is one reason regression is more useful than KNN and decision tree for this project. KNN and decision tree can predict salary, but they do not explain salary changes as clearly as regression.
+
+These results demonstrate that regression not only predicts salary accurately but also captures how salary changes continuously with key variables, which is not achieved by KNN and decision tree models.
+
+```{r}
+summary(reg)$coefficients[1:8, ]
+```
+
+# 6. Conclusion
+
+Regression was selected as the final model because it achieved the lowest prediction error and also captured the continuous relationship between salary and key variables such as experience and education.
+
+In contrast, KNN performed worse due to high dimensionality and sensitivity to distance, and the decision tree failed to capture the smooth salary trend because of its step-based structure.
+
+From a business perspective, this model can be used to estimate employee salaries based on experience and education, helping managers make more consistent and data-driven compensation decisions.
+
+

@@ -1,0 +1,89 @@
+---
+title: "assignment5"
+author: "Hooman Fareghi"
+date: "2026-04-12"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#load packages and data and remove missing data and preprocessing 
+```{r}
+library(cluster)
+library(dplyr)
+cereals <- read.csv("Cereals-1.csv")%>%na.omit()
+Cnumeric <- cereals%>%select(where(is.numeric))
+Cscaled <- Cnumeric%>%scale()
+```
+
+#compare linkage methods
+```{r}
+compareL <- data.frame(method = c("single", "complete", "average", "ward"),
+    ac = c(
+    agnes(Cscaled, method = "single")$ac,
+    agnes(Cscaled, method = "complete")$ac,
+    agnes(Cscaled, method = "average")$ac,
+    agnes(Cscaled, method = "ward")$ac))
+compareL
+```
+
+
+#Apply hierarchical clustering to the data using Euclidean distance
+
+```{r}
+hc <- Cscaled %>%dist(method ="euclidean") %>%hclust(method ="ward.D2")
+```
+
+
+#How many clusters would you choose
+#I chose 3 based on the dendrogram
+```{r}
+plot(hc, cex = 0.6, hang = -1)
+groups <- cutree(hc, k = 3)
+table(groups)
+```
+
+
+
+#make structure clusters
+
+
+```{r}
+cereals%>%mutate(cluster = groups)%>%group_by(cluster)%>%
+  summarise(across(c(sugars, fiber), mean))
+```
+
+
+#The clusters differ based on nutritional values. Cluster 1 has higher fiber and moderate sugar, Cluster 2 has high sugar and low fiber, and Cluster 3 has low sugar and moderate fiber.
+
+
+#stability
+
+```{r}
+set.seed(123)
+IDA <- sample(1:nrow(Cscaled), nrow(Cscaled)/2)
+A <- Cscaled[IDA, ]
+B <- Cscaled[-IDA, ]
+Acluster <- A %>% dist() %>% hclust(method="ward.D2") %>% cutree(k=3)
+centroids <- as.data.frame(A) %>%mutate(cluster=Acluster) %>%
+group_by(cluster) %>%summarise(across(everything(), mean))
+Bassigned<- apply(B,1,function(x) which.min(apply(centroids[,-1],1,function(c) sum((x-c)^2))))
+mean(Bassigned == groups[-IDA])
+```
+
+#the stability is low (0.27), indicating that the clusters are not very consistent.
+
+
+#The elementary public schools would like to choose a set of cereals to include in their daily cafeterias. Every day a different cereal is offered, but all cereals should support a healthy diet. For this goal, you are requested to find a cluster of “healthy cereals.”  Should the data be normalized? If not, how should they be used in the cluster analysis?  
+
+```{r}
+cereals%>%mutate(cluster = groups)%>%group_by(cluster)%>%summarise(across(c(sugars, fiber,carbo,fat,sodium,potass,vitamins), mean))
+```
+
+#based on the important parameters cluster 3 is the healthiest because it has the lowest sugar and fat, along with moderate fiber and reasonable sodium levels. In contrast, Cluster 2 has high sugar and low fiber, making it the least healthy, while Cluster 1 has high fiber but also higher sugar and fat.
+
+#Yes, the data should be normalized before clustering because Euclidean distance is sensitive to scale differences. However, the unscaled data should be used afterward to interpret the clusters and find the healthiest group.
